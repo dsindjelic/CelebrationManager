@@ -1,24 +1,42 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { Stack } from "expo-router";
+import { SQLiteProvider } from "expo-sqlite";
+import { StatusBar } from "expo-status-bar";
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+import { initializeDatabase } from "../database/database";
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+    <SQLiteProvider
+      databaseName="celebration-manager.db"
+      onInit={initializeDatabase}
+    >
+      <StatusBar style="light" />
+
+      <Stack
+        screenOptions={{
+          headerStyle: {
+            backgroundColor: "#6d3b7c",
+          },
+          headerTintColor: "#ffffff",
+          headerTitleStyle: {
+            fontWeight: "600",
+          },
+        }}
+      >
+        <Stack.Screen
+          name="index"
+          options={{
+            title: "Kalendar proslava",
+          }}
+        />
+
+        <Stack.Screen
+          name="reservation/new"
+          options={{
+            title: "Nova rezervacija",
+          }}
+        />
       </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    </SQLiteProvider>
   );
 }
