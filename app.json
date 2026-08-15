@@ -1,41 +1,44 @@
 {
   "expo": {
-    "name": "CelebrationManager",
-    "slug": "CelebrationManager",
+    "name": "Emona Proslave",
+    "slug": "emona-proslave",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "celebrationmanager",
-    "userInterfaceStyle": "automatic",
+    "scheme": "emonaproslave",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "rs.bistrosistem.emonaproslave",
+      "buildNumber": "1"
     },
     "android": {
+      "package": "rs.bistrosistem.emonaproslave",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#6D3B7C"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/images/icon.png",
+          "imageWidth": 220,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#6D3B7C",
           "dark": {
-            "backgroundColor": "#000000"
+            "image": "./assets/images/icon.png",
+            "backgroundColor": "#6D3B7C"
           }
         }
       ],
@@ -44,6 +47,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9c36e4b4-1840-47c5-a0b2-2715007ac4cf"
+      }
+    },
+    "owner": "bistro-sistem"
   }
 }

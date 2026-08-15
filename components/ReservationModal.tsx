@@ -1,10 +1,10 @@
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 export type ReservationModalData = {
@@ -22,6 +22,15 @@ export type ReservationModalData = {
   complimentary_guests: number;
   fasting_guests: number;
   price_per_person: number;
+
+  menu: string;
+  music: string;
+
+  has_cake: number;
+  has_smoke: number;
+  has_decoration: number;
+
+  notes: string;
 };
 
 type ReservationModalProps = {
@@ -36,6 +45,38 @@ type ReservationModalProps = {
 
 function formatPrice(value: number) {
   return value.toLocaleString("sr-RS");
+}
+
+function formatDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return value;
+  }
+
+  const date = new Date(year, month - 1, day);
+
+  return date.toLocaleDateString("sr-RS", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case "Upit":
+      return "#f5a000";
+
+    case "Rezervisano":
+      return "#1685bd";
+
+    case "Potvrđeno":
+      return "#159963";
+
+    default:
+      return "#6d3b7c";
+  }
 }
 
 export default function ReservationModal({
@@ -57,6 +98,11 @@ export default function ReservationModal({
 
   const basePrice = chargedGuests * reservation.price_per_person;
 
+  const hasAdditionalServices =
+    reservation.has_cake === 1 ||
+    reservation.has_smoke === 1 ||
+    reservation.has_decoration === 1;
+
   return (
     <Modal
       visible={visible}
@@ -70,6 +116,8 @@ export default function ReservationModal({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.content}
           >
+            {/* HEADER */}
+
             <View style={styles.header}>
               <View style={styles.titleContainer}>
                 <Text style={styles.title}>{reservation.celebrant_name}</Text>
@@ -84,13 +132,28 @@ export default function ReservationModal({
               </Pressable>
             </View>
 
-            <View style={styles.statusRow}>
-              <Text style={styles.statusLabel}>Status</Text>
+            {/* STATUS */}
 
-              <View style={styles.statusBadge}>
+            <View style={styles.statusRow}>
+              <Text style={styles.dateText}>
+                {formatDate(reservation.celebration_date)}
+              </Text>
+
+              <View
+                style={[
+                  styles.statusBadge,
+                  {
+                    backgroundColor: getStatusColor(reservation.status),
+                  },
+                ]}
+              >
                 <Text style={styles.statusText}>{reservation.status}</Text>
               </View>
             </View>
+
+            {/* OSNOVNI PODACI */}
+
+            <SectionTitle title="Osnovni podaci" />
 
             <View style={styles.details}>
               <DetailRow
@@ -126,13 +189,78 @@ export default function ReservationModal({
               />
             </View>
 
+            {/* CENA */}
+
             <View style={styles.totalCard}>
-              <Text style={styles.totalLabel}>Osnovna vrednost</Text>
+              <Text style={styles.totalLabel}>Osnovna vrednost proslave</Text>
 
               <Text style={styles.totalValue}>
                 {formatPrice(basePrice)} RSD
               </Text>
+
+              <Text style={styles.totalExplanation}>
+                {chargedGuests} × {formatPrice(reservation.price_per_person)}{" "}
+                RSD
+              </Text>
             </View>
+
+            {/* ORGANIZACIJA */}
+
+            <SectionTitle title="Organizacija proslave" />
+
+            {!!reservation.menu?.trim() && (
+              <InfoCard title="Jelovnik" value={reservation.menu} />
+            )}
+
+            {!!reservation.music?.trim() && (
+              <InfoCard title="Muzika" value={reservation.music} />
+            )}
+
+            {/* DODATNE USLUGE */}
+
+            <Text style={styles.additionalTitle}>Dodatne usluge</Text>
+
+            {hasAdditionalServices ? (
+              <View style={styles.serviceContainer}>
+                {reservation.has_cake === 1 && <ServiceBadge label="Torta" />}
+
+                {reservation.has_smoke === 1 && (
+                  <ServiceBadge label="Dim / prskalice" />
+                )}
+
+                {reservation.has_decoration === 1 && (
+                  <ServiceBadge label="Dekoracija" />
+                )}
+              </View>
+            ) : (
+              <Text style={styles.noServicesText}>
+                Nema dogovorenih dodatnih usluga.
+              </Text>
+            )}
+
+            {/* NAPOMENA */}
+
+            {!!reservation.notes?.trim() && (
+              <>
+                <SectionTitle title="Napomena" />
+
+                <View style={styles.notesCard}>
+                  <Text style={styles.notesText}>{reservation.notes}</Text>
+                </View>
+              </>
+            )}
+
+            {/* POTVRĐENO */}
+
+            {reservation.status === "Potvrđeno" && (
+              <View style={styles.confirmedCard}>
+                <Text style={styles.confirmedText}>
+                  ✓ Rezervacija je potvrđena
+                </Text>
+              </View>
+            )}
+
+            {/* DUGMAD */}
 
             {reservation.status !== "Potvrđeno" && (
               <Pressable
@@ -165,6 +293,14 @@ export default function ReservationModal({
   );
 }
 
+type SectionTitleProps = {
+  title: string;
+};
+
+function SectionTitle({ title }: SectionTitleProps) {
+  return <Text style={styles.sectionTitle}>{title}</Text>;
+}
+
 type DetailRowProps = {
   label: string;
   value: string;
@@ -179,6 +315,32 @@ function DetailRow({ label, value }: DetailRowProps) {
   );
 }
 
+type InfoCardProps = {
+  title: string;
+  value: string;
+};
+
+function InfoCard({ title, value }: InfoCardProps) {
+  return (
+    <View style={styles.infoCard}>
+      <Text style={styles.infoTitle}>{title}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+type ServiceBadgeProps = {
+  label: string;
+};
+
+function ServiceBadge({ label }: ServiceBadgeProps) {
+  return (
+    <View style={styles.serviceBadge}>
+      <Text style={styles.serviceBadgeText}>✓ {label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -188,7 +350,7 @@ const styles = StyleSheet.create({
   },
 
   modalCard: {
-    maxHeight: "88%",
+    maxHeight: "90%",
     backgroundColor: "#ffffff",
     borderRadius: 22,
     overflow: "hidden",
@@ -196,6 +358,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 20,
+    paddingBottom: 26,
   },
 
   header: {
@@ -239,18 +402,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 10,
     marginTop: 20,
   },
 
-  statusLabel: {
+  dateText: {
+    flex: 1,
     fontSize: 15,
-    color: "#716574",
+    fontWeight: "600",
+    color: "#5f5062",
   },
 
   statusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: "#6d3b7c",
     borderRadius: 14,
   },
 
@@ -260,8 +425,15 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
 
+  sectionTitle: {
+    marginTop: 24,
+    marginBottom: 8,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#54275e",
+  },
+
   details: {
-    marginTop: 18,
     borderTopWidth: 1,
     borderTopColor: "#eee8ef",
   },
@@ -306,6 +478,93 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     color: "#6d3b7c",
+  },
+
+  totalExplanation: {
+    marginTop: 4,
+    fontSize: 13,
+    color: "#87758b",
+  },
+
+  infoCard: {
+    marginTop: 8,
+    padding: 14,
+    backgroundColor: "#f8f5f9",
+    borderRadius: 12,
+  },
+
+  infoTitle: {
+    marginBottom: 6,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#756079",
+  },
+
+  infoValue: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: "#3e3341",
+  },
+
+  additionalTitle: {
+    marginTop: 18,
+    marginBottom: 10,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#665869",
+  },
+
+  serviceContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  serviceBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#e6f5ec",
+    borderRadius: 18,
+  },
+
+  serviceBadgeText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#258356",
+  },
+
+  noServicesText: {
+    paddingVertical: 4,
+    fontSize: 14,
+    color: "#8b808e",
+  },
+
+  notesCard: {
+    padding: 14,
+    backgroundColor: "#fff8e8",
+    borderLeftWidth: 4,
+    borderLeftColor: "#e6a23c",
+    borderRadius: 10,
+  },
+
+  notesText: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: "#4b414d",
+  },
+
+  confirmedCard: {
+    marginTop: 22,
+    padding: 14,
+    alignItems: "center",
+    backgroundColor: "#e7f5ed",
+    borderRadius: 13,
+  },
+
+  confirmedText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#258356",
   },
 
   confirmButton: {

@@ -121,21 +121,27 @@ export default function HomeScreen() {
     try {
       const rows = await database.getAllAsync<Reservation>(
         `
-          SELECT
-            id,
-            celebration_date,
-            celebrant_name,
-            customer_name,
-            phone_number,
-            celebration_type,
-            status,
-            guest_count,
-            complimentary_guests,
-            fasting_guests,
-            price_per_person
-          FROM reservations
-          ORDER BY celebration_date, id
-        `,
+    SELECT
+      id,
+      celebration_date,
+      celebrant_name,
+      customer_name,
+      phone_number,
+      celebration_type,
+      status,
+      guest_count,
+      complimentary_guests,
+      fasting_guests,
+      price_per_person,
+      menu,
+      music,
+      has_cake,
+      has_smoke,
+      has_decoration,
+      notes
+    FROM reservations
+    ORDER BY celebration_date, id
+  `,
       );
 
       setReservations(rows);
