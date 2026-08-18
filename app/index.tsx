@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Calendar, DateData, LocaleConfig } from "react-native-calendars";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { exportReservationsToExcel } from "../services/exportReservationsToExcel";
 
 import ReservationModal, {
   ReservationModalData,
@@ -124,6 +125,7 @@ export default function HomeScreen() {
     SELECT
       id,
       celebration_date,
+      start_time,
       celebrant_name,
       customer_name,
       phone_number,
@@ -165,7 +167,11 @@ export default function HomeScreen() {
       ),
     [reservations, selectedDate],
   );
+  const [visibleMonth, setVisibleMonth] = useState(
+    getLocalDateString().slice(0, 7),
+  );
 
+  const [isExporting, setIsExporting] = useState(false);
   const dateSummary = useMemo(() => {
     const summary: Record<
       string,
@@ -209,8 +215,23 @@ export default function HomeScreen() {
 
   function handleDayPress(day: DateData) {
     setSelectedDate(day.dateString);
+    setVisibleMonth(day.dateString.slice(0, 7));
   }
+  async function handleExportExcel() {
+    const [year, month] = visibleMonth.split("-").map(Number);
 
+    try {
+      setIsExporting(true);
+
+      await exportReservationsToExcel(reservations, year, month);
+    } catch (error) {
+      console.error("Greška pri izvozu u Excel:", error);
+
+      Alert.alert("Izvoz nije uspeo", "Excel fajl nije napravljen.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
   function handleNewReservation() {
     router.push({
       pathname: "/reservation/new",
@@ -312,6 +333,9 @@ export default function HomeScreen() {
             firstDay={1}
             enableSwipeMonths
             onDayPress={handleDayPress}
+            onMonthChange={(month) => {
+              setVisibleMonth(month.dateString.slice(0, 7));
+            }}
             dayComponent={({ date, state }) => {
               if (!date) {
                 return null;
@@ -499,6 +523,21 @@ export default function HomeScreen() {
           onPress={handleNewReservation}
         >
           <Text style={styles.addButtonText}>＋ Nova rezervacija</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [
+            styles.exportButton,
+            pressed && styles.exportButtonPressed,
+            isExporting && styles.disabledButton,
+          ]}
+          onPress={handleExportExcel}
+          disabled={isExporting}
+        >
+          <Text style={styles.exportButtonText}>
+            {isExporting
+              ? "Pravljenje Excel fajla..."
+              : "Izvezi prikazani mesec u Excel"}
+          </Text>
         </Pressable>
       </ScrollView>
 
@@ -791,5 +830,29 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
     color: "#ffffff",
+  },
+  exportButton: {
+    marginTop: 18,
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 2,
+    borderColor: "#7e3788",
+    borderRadius: 14,
+  },
+
+  exportButtonPressed: {
+    backgroundColor: "#f1e7f3",
+  },
+
+  exportButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#7e3788",
+  },
+
+  disabledButton: {
+    opacity: 0.6,
   },
 });

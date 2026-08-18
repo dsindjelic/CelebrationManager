@@ -30,11 +30,18 @@ const celebrationTypes = [
 ];
 
 const reservationStatuses = ["Upit", "Rezervisano", "Potvrđeno"];
+const startTimeOptions = Array.from({ length: 28 }, (_, index) => {
+  const totalMinutes = 10 * 60 + index * 30;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
 
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+});
 type ReservationRow = {
   id: number;
 
   celebration_date: string;
+  start_time: string | null;
   celebrant_name: string;
   customer_name: string;
   phone_number: string;
@@ -106,6 +113,7 @@ export default function NewReservationScreen() {
     typeof params.date === "string" ? params.date : getLocalDateString();
 
   const [selectedDate, setSelectedDate] = useState(initialDate);
+  const [startTime, setStartTime] = useState("18:00");
 
   const [celebrantName, setCelebrantName] = useState("");
 
@@ -117,7 +125,7 @@ export default function NewReservationScreen() {
 
   const [status, setStatus] = useState("Upit");
 
-  const [guestCount, setGuestCount] = useState("");
+  const [guestCount, setGuestCount] = useState("5");
 
   const [complimentaryGuests, setComplimentaryGuests] = useState("0");
 
@@ -154,6 +162,7 @@ export default function NewReservationScreen() {
               SELECT
                 id,
                 celebration_date,
+                start_time,
                 celebrant_name,
                 customer_name,
                 phone_number,
@@ -187,6 +196,7 @@ export default function NewReservationScreen() {
         }
 
         setSelectedDate(reservation.celebration_date);
+        setStartTime(reservation.start_time ?? "18:00");
 
         setCelebrantName(reservation.celebrant_name);
 
@@ -328,6 +338,7 @@ export default function NewReservationScreen() {
           `
             UPDATE reservations
             SET
+              start_time = ?,
               celebrant_name = ?,
               customer_name = ?,
               phone_number = ?,
@@ -347,6 +358,7 @@ export default function NewReservationScreen() {
             WHERE id = ?
           `,
           [
+            startTime,
             celebrantName.trim(),
             customerName.trim(),
             phoneNumber.trim(),
@@ -373,6 +385,7 @@ export default function NewReservationScreen() {
           `
               INSERT INTO reservations (
                 celebration_date,
+                start_time,
                 celebrant_name,
                 customer_name,
                 phone_number,
@@ -391,12 +404,13 @@ export default function NewReservationScreen() {
                 created_at
               )
               VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?
-              )
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?, ?, ?
+                      )
             `,
           [
             selectedDate,
+            startTime,
             celebrantName.trim(),
             customerName.trim(),
             phoneNumber.trim(),
@@ -488,6 +502,50 @@ export default function NewReservationScreen() {
               <Text style={styles.dateLabel}>Datum proslave</Text>
 
               <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
+            </View>
+
+            <View style={styles.timeCard}>
+              <View style={styles.timeHeader}>
+                <Text style={styles.timeLabel}>Početak proslave</Text>
+                <Text style={styles.selectedTime}>{startTime}</Text>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.timeRuler}
+              >
+                {startTimeOptions.map((time) => {
+                  const selected = startTime === time;
+
+                  return (
+                    <Pressable
+                      key={time}
+                      style={[
+                        styles.timeOption,
+                        selected && styles.selectedTimeOption,
+                      ]}
+                      onPress={() => setStartTime(time)}
+                    >
+                      <View
+                        style={[
+                          styles.timeTick,
+                          selected && styles.selectedTimeTick,
+                        ]}
+                      />
+
+                      <Text
+                        style={[
+                          styles.timeOptionText,
+                          selected && styles.selectedTimeOptionText,
+                        ]}
+                      >
+                        {time}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             <Section title="Osnovni podaci">
@@ -838,7 +896,73 @@ const styles = StyleSheet.create({
     color: "#35213b",
     textTransform: "capitalize",
   },
+  timeCard: {
+    marginTop: 12,
+    paddingVertical: 14,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    elevation: 2,
+  },
 
+  timeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+  },
+
+  timeLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#514654",
+  },
+
+  selectedTime: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#6d3b7c",
+  },
+
+  timeRuler: {
+    paddingHorizontal: 10,
+    paddingTop: 14,
+    paddingBottom: 2,
+  },
+
+  timeOption: {
+    width: 68,
+    alignItems: "center",
+    paddingVertical: 7,
+    marginHorizontal: 2,
+    borderRadius: 12,
+  },
+
+  selectedTimeOption: {
+    backgroundColor: "#6d3b7c",
+  },
+
+  timeTick: {
+    width: 2,
+    height: 10,
+    marginBottom: 5,
+    backgroundColor: "#c8bdcb",
+    borderRadius: 1,
+  },
+
+  selectedTimeTick: {
+    height: 15,
+    backgroundColor: "#ffffff",
+  },
+
+  timeOptionText: {
+    fontSize: 13,
+    color: "#675b6a",
+  },
+
+  selectedTimeOptionText: {
+    fontWeight: "700",
+    color: "#ffffff",
+  },
   section: {
     marginTop: 18,
     padding: 16,

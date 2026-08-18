@@ -1,5 +1,9 @@
 import { SQLiteDatabase } from "expo-sqlite";
 
+type TableColumn = {
+  name: string;
+};
+
 export async function initializeDatabase(database: SQLiteDatabase) {
   await database.execAsync(`
     PRAGMA journal_mode = WAL;
@@ -9,6 +13,8 @@ export async function initializeDatabase(database: SQLiteDatabase) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
 
       celebration_date TEXT NOT NULL,
+      start_time TEXT,
+
       celebrant_name TEXT NOT NULL,
       customer_name TEXT NOT NULL,
       phone_number TEXT NOT NULL,
@@ -38,6 +44,27 @@ export async function initializeDatabase(database: SQLiteDatabase) {
       idx_reservations_celebration_date
       ON reservations (celebration_date);
   `);
+
+  /*
+   * CREATE TABLE IF NOT EXISTS ne menja već postojeću tabelu.
+   * Zato proveravamo da li stara baza već ima kolonu start_time.
+   */
+  const columns = await database.getAllAsync<TableColumn>(
+    "PRAGMA table_info(reservations);",
+  );
+
+  const hasStartTimeColumn = columns.some(
+    (column) => column.name === "start_time",
+  );
+
+  if (!hasStartTimeColumn) {
+    await database.execAsync(`
+      ALTER TABLE reservations
+      ADD COLUMN start_time TEXT;
+    `);
+
+    console.log("Dodata je kolona start_time.");
+  }
 
   console.log("SQLite baza je inicijalizovana.");
 }

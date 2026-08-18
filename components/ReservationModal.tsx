@@ -11,6 +11,7 @@ export type ReservationModalData = {
   id: number;
 
   celebration_date: string;
+  start_time: string | null;
   celebrant_name: string;
   customer_name: string;
   phone_number: string;
