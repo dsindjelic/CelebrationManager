@@ -1,10 +1,14 @@
+import * as FileSystem from "expo-file-system/legacy";
+import * as ImagePicker from "expo-image-picker";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -42,6 +46,7 @@ type ReservationRow = {
 
   celebration_date: string;
   start_time: string | null;
+
   celebrant_name: string;
   customer_name: string;
   phone_number: string;
@@ -50,16 +55,16 @@ type ReservationRow = {
   status: string;
 
   guest_count: number;
-  complimentary_guests: number;
   fasting_guests: number;
   price_per_person: number;
-
+  currency: string;
   menu: string | null;
-  music: string | null;
-
-  has_cake: number;
   has_smoke: number;
-  has_decoration: number;
+
+  has_white_tablecloths: number;
+  has_black_tablecloths: number;
+
+  table_layout_image_uri: string | null;
 
   notes: string | null;
 };
@@ -115,8 +120,6 @@ export default function NewReservationScreen() {
   const [selectedDate, setSelectedDate] = useState(initialDate);
   const [startTime, setStartTime] = useState("18:00");
 
-  const [celebrantName, setCelebrantName] = useState("");
-
   const [customerName, setCustomerName] = useState("");
 
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -127,27 +130,29 @@ export default function NewReservationScreen() {
 
   const [guestCount, setGuestCount] = useState("5");
 
-  const [complimentaryGuests, setComplimentaryGuests] = useState("0");
-
   const [fastingGuests, setFastingGuests] = useState("0");
 
   const [pricePerPerson, setPricePerPerson] = useState("");
-
+  const [currency, setCurrency] = useState("RSD");
   const [menu, setMenu] = useState("");
-  const [music, setMusic] = useState("");
-
-  const [hasCake, setHasCake] = useState(false);
 
   const [hasSmoke, setHasSmoke] = useState(false);
-
-  const [hasDecoration, setHasDecoration] = useState(false);
 
   const [notes, setNotes] = useState("");
 
   const [isLoading, setIsLoading] = useState(isEditMode);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [hasWhiteTablecloths, setHasWhiteTablecloths] = useState(false);
 
+  const [hasBlackTablecloths, setHasBlackTablecloths] = useState(false);
+
+  const [tableLayoutImageUri, setTableLayoutImageUri] = useState<string | null>(
+    null,
+  );
+
+  const [isImageOpen, setIsImageOpen] = useState(false);
+  const [isSelectingImage, setIsSelectingImage] = useState(false);
   useEffect(() => {
     if (!isEditMode || reservationId === null) {
       return;
@@ -159,28 +164,28 @@ export default function NewReservationScreen() {
 
         const reservation = await database.getFirstAsync<ReservationRow>(
           `
-              SELECT
-                id,
-                celebration_date,
-                start_time,
-                celebrant_name,
-                customer_name,
-                phone_number,
-                celebration_type,
-                status,
-                guest_count,
-                complimentary_guests,
-                fasting_guests,
-                price_per_person,
-                menu,
-                music,
-                has_cake,
-                has_smoke,
-                has_decoration,
-                notes
-              FROM reservations
-              WHERE id = ?
-            `,
+    SELECT
+      id,
+      celebration_date,
+      start_time,
+      celebrant_name,
+      customer_name,
+      phone_number,
+      celebration_type,
+      status,
+      guest_count,
+      fasting_guests,
+      price_per_person,
+      currency,
+      menu,
+      has_smoke,
+      has_white_tablecloths,
+      has_black_tablecloths,
+      table_layout_image_uri,
+      notes
+    FROM reservations
+    WHERE id = ?
+  `,
           [reservationId],
         );
 
@@ -198,32 +203,26 @@ export default function NewReservationScreen() {
         setSelectedDate(reservation.celebration_date);
         setStartTime(reservation.start_time ?? "18:00");
 
-        setCelebrantName(reservation.celebrant_name);
-
-        setCustomerName(reservation.customer_name);
+        setCustomerName(
+          reservation.customer_name || reservation.celebrant_name,
+        );
 
         setPhoneNumber(reservation.phone_number);
-
         setCelebrationType(reservation.celebration_type);
-
         setStatus(reservation.status);
 
         setGuestCount(String(reservation.guest_count));
-
-        setComplimentaryGuests(String(reservation.complimentary_guests));
-
         setFastingGuests(String(reservation.fasting_guests));
-
         setPricePerPerson(String(reservation.price_per_person));
-
+        setCurrency(reservation.currency ?? "RSD");
         setMenu(reservation.menu ?? "");
-        setMusic(reservation.music ?? "");
-
-        setHasCake(reservation.has_cake === 1);
-
         setHasSmoke(reservation.has_smoke === 1);
 
-        setHasDecoration(reservation.has_decoration === 1);
+        setHasWhiteTablecloths(reservation.has_white_tablecloths === 1);
+
+        setHasBlackTablecloths(reservation.has_black_tablecloths === 1);
+
+        setTableLayoutImageUri(reservation.table_layout_image_uri ?? null);
 
         setNotes(reservation.notes ?? "");
       } catch (error) {
@@ -240,35 +239,102 @@ export default function NewReservationScreen() {
 
   const calculation = useMemo(() => {
     const guests = toNumber(guestCount);
-
-    const complimentary = toNumber(complimentaryGuests);
-
     const price = toNumber(pricePerPerson);
 
-    const chargedGuests = Math.max(0, guests - complimentary);
-
-    const basePrice = chargedGuests * price;
-
     return {
-      chargedGuests,
-      basePrice,
+      basePrice: guests * price,
     };
-  }, [guestCount, complimentaryGuests, pricePerPerson]);
+  }, [guestCount, pricePerPerson]);
+  async function saveImagePermanently(sourceUri: string) {
+    const directory = `${FileSystem.documentDirectory}table-layouts`;
 
+    await FileSystem.makeDirectoryAsync(directory, {
+      intermediates: true,
+    });
+
+    const extensionPart = sourceUri
+      .split(".")
+      .pop()
+      ?.split("?")[0]
+      .toLowerCase();
+
+    const allowedExtensions = ["jpg", "jpeg", "png", "heic", "webp"];
+
+    const extension =
+      extensionPart && allowedExtensions.includes(extensionPart)
+        ? extensionPart
+        : "jpg";
+
+    const destination = `${directory}/skica-${Date.now()}.${extension}`;
+
+    await FileSystem.copyAsync({
+      from: sourceUri,
+      to: destination,
+    });
+
+    return destination;
+  }
+
+  async function handleImageSelection(source: "camera" | "gallery") {
+    try {
+      setIsSelectingImage(true);
+
+      if (source === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+        if (!permission.granted) {
+          Alert.alert("Nema dozvole", "Potrebno je dozvoliti pristup kameri.");
+
+          return;
+        }
+      } else {
+        const permission =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (!permission.granted) {
+          Alert.alert(
+            "Nema dozvole",
+            "Potrebno je dozvoliti pristup galeriji.",
+          );
+
+          return;
+        }
+      }
+
+      const result =
+        source === "camera"
+          ? await ImagePicker.launchCameraAsync({
+              mediaTypes: ["images"],
+              allowsEditing: false,
+              quality: 0.8,
+            })
+          : await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ["images"],
+              allowsEditing: false,
+              quality: 0.8,
+            });
+
+      if (result.canceled || !result.assets[0]?.uri) {
+        return;
+      }
+
+      const permanentUri = await saveImagePermanently(result.assets[0].uri);
+
+      setTableLayoutImageUri(permanentUri);
+    } catch (error) {
+      console.error("Greška pri dodavanju skice:", error);
+
+      Alert.alert("Greška", "Slika skice nije dodata.");
+    } finally {
+      setIsSelectingImage(false);
+    }
+  }
   async function handleSave() {
     const guests = toNumber(guestCount);
-
-    const complimentary = toNumber(complimentaryGuests);
 
     const fasting = toNumber(fastingGuests);
 
     const price = toNumber(pricePerPerson);
-
-    if (!celebrantName.trim()) {
-      Alert.alert("Nedostaje podatak", "Unesite ko proslavlja.");
-
-      return;
-    }
 
     if (!customerName.trim()) {
       Alert.alert("Nedostaje podatak", "Unesite ime osobe koja zakazuje.");
@@ -284,24 +350,6 @@ export default function NewReservationScreen() {
 
     if (guests <= 0) {
       Alert.alert("Neispravan unos", "Broj gostiju mora biti veći od nule.");
-
-      return;
-    }
-
-    if (complimentary < 0) {
-      Alert.alert(
-        "Neispravan unos",
-        "Broj gratis mesta ne može biti negativan.",
-      );
-
-      return;
-    }
-
-    if (complimentary > guests) {
-      Alert.alert(
-        "Neispravan unos",
-        "Broj gratis mesta ne može biti veći od broja gostiju.",
-      );
 
       return;
     }
@@ -336,43 +384,47 @@ export default function NewReservationScreen() {
       if (isEditMode && reservationId !== null) {
         await database.runAsync(
           `
-            UPDATE reservations
-            SET
-              start_time = ?,
-              celebrant_name = ?,
-              customer_name = ?,
-              phone_number = ?,
-              celebration_type = ?,
-              status = ?,
-              guest_count = ?,
-              complimentary_guests = ?,
-              fasting_guests = ?,
-              price_per_person = ?,
-              menu = ?,
-              music = ?,
-              has_cake = ?,
-              has_smoke = ?,
-              has_decoration = ?,
-              notes = ?,
-              updated_at = ?
-            WHERE id = ?
-          `,
+    UPDATE reservations
+    SET
+      start_time = ?,
+      celebrant_name = ?,
+      customer_name = ?,
+      phone_number = ?,
+      celebration_type = ?,
+      status = ?,
+      guest_count = ?,
+      complimentary_guests = 0,
+      fasting_guests = ?,
+      price_per_person = ?,
+      currency = ?,
+      menu = ?,
+      music = NULL,
+      has_cake = 0,
+      has_smoke = ?,
+      has_decoration = 0,
+      has_white_tablecloths = ?,
+      has_black_tablecloths = ?,
+      table_layout_image_uri = ?,
+      notes = ?,
+      updated_at = ?
+    WHERE id = ?
+  `,
           [
             startTime,
-            celebrantName.trim(),
+            customerName.trim(),
             customerName.trim(),
             phoneNumber.trim(),
             celebrationType,
             status,
             guests,
-            complimentary,
             fasting,
             price,
+            currency,
             menu.trim(),
-            music.trim(),
-            hasCake ? 1 : 0,
             hasSmoke ? 1 : 0,
-            hasDecoration ? 1 : 0,
+            hasWhiteTablecloths ? 1 : 0,
+            hasBlackTablecloths ? 1 : 0,
+            tableLayoutImageUri,
             notes.trim(),
             new Date().toISOString(),
             reservationId,
@@ -383,48 +435,52 @@ export default function NewReservationScreen() {
       } else {
         const result = await database.runAsync(
           `
-              INSERT INTO reservations (
-                celebration_date,
-                start_time,
-                celebrant_name,
-                customer_name,
-                phone_number,
-                celebration_type,
-                status,
-                guest_count,
-                complimentary_guests,
-                fasting_guests,
-                price_per_person,
-                menu,
-                music,
-                has_cake,
-                has_smoke,
-                has_decoration,
-                notes,
-                created_at
-              )
-              VALUES (
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                  ?, ?, ?, ?, ?, ?, ?, ?
-                      )
-            `,
+    INSERT INTO reservations (
+      celebration_date,
+      start_time,
+      celebrant_name,
+      customer_name,
+      phone_number,
+      celebration_type,
+      status,
+      guest_count,
+      complimentary_guests,
+      fasting_guests,
+      price_per_person,
+      currency,
+      menu,
+      music,
+      has_cake,
+      has_smoke,
+      has_decoration,
+      has_white_tablecloths,
+      has_black_tablecloths,
+      table_layout_image_uri,
+      notes,
+      created_at
+    )
+    VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?,
+      ?, NULL, 0, ?, 0, ?, ?, ?, ?, ?
+    )
+  `,
           [
             selectedDate,
             startTime,
-            celebrantName.trim(),
+            customerName.trim(),
             customerName.trim(),
             phoneNumber.trim(),
             celebrationType,
             status,
             guests,
-            complimentary,
             fasting,
             price,
+
             menu.trim(),
-            music.trim(),
-            hasCake ? 1 : 0,
             hasSmoke ? 1 : 0,
-            hasDecoration ? 1 : 0,
+            hasWhiteTablecloths ? 1 : 0,
+            hasBlackTablecloths ? 1 : 0,
+            tableLayoutImageUri,
             notes.trim(),
             new Date().toISOString(),
           ],
@@ -550,14 +606,7 @@ export default function NewReservationScreen() {
 
             <Section title="Osnovni podaci">
               <Field
-                label="Ko proslavlja *"
-                value={celebrantName}
-                onChangeText={setCelebrantName}
-                placeholder="Na primer: Ana i Marko"
-              />
-
-              <Field
-                label="Ko zakazuje *"
+                label="Ime i prezime osobe koja zakazuje *"
                 value={customerName}
                 onChangeText={setCustomerName}
                 placeholder="Ime i prezime"
@@ -606,22 +655,10 @@ export default function NewReservationScreen() {
                     value={guestCount}
                     onChangeText={setGuestCount}
                     keyboardType="number-pad"
-                    placeholder="0"
+                    placeholder="5"
                   />
                 </View>
 
-                <View style={styles.column}>
-                  <Field
-                    label="Gratis mesta"
-                    value={complimentaryGuests}
-                    onChangeText={setComplimentaryGuests}
-                    keyboardType="number-pad"
-                    placeholder="0"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.twoColumns}>
                 <View style={styles.column}>
                   <Field
                     label="Gostiju koji poste"
@@ -631,27 +668,36 @@ export default function NewReservationScreen() {
                     placeholder="0"
                   />
                 </View>
-
-                <View style={styles.column}>
-                  <Field
-                    label="Cena po osobi"
-                    value={pricePerPerson}
-                    onChangeText={setPricePerPerson}
-                    keyboardType="number-pad"
-                    placeholder="0"
-                  />
-                </View>
               </View>
 
-              <View style={styles.calculationCard}>
-                <CalculationRow
-                  label="Gostiju za naplatu"
-                  value={String(calculation.chargedGuests)}
+              <Field
+                label="Cena po osobi"
+                value={pricePerPerson}
+                onChangeText={setPricePerPerson}
+                keyboardType="number-pad"
+                placeholder="0"
+              />
+              <Text style={styles.label}>Valuta</Text>
+
+              <View style={styles.chipContainer}>
+                <ChoiceChip
+                  label="Dinar (RSD)"
+                  selected={currency === "RSD"}
+                  onPress={() => setCurrency("RSD")}
                 />
 
+                <ChoiceChip
+                  label="Evro (EUR)"
+                  selected={currency === "EUR"}
+                  onPress={() => setCurrency("EUR")}
+                />
+              </View>
+              <View style={styles.calculationCard}>
                 <CalculationRow
                   label="Osnovna cena"
-                  value={`${calculation.basePrice.toLocaleString("sr-RS")} RSD`}
+                  value={`${calculation.basePrice.toLocaleString("sr-RS")} ${
+                    currency === "EUR" ? "€" : "RSD"
+                  }`}
                   emphasized
                 />
               </View>
@@ -666,19 +712,6 @@ export default function NewReservationScreen() {
                 multiline
               />
 
-              <Field
-                label="Muzika"
-                value={music}
-                onChangeText={setMusic}
-                placeholder="Bend, DJ ili druga muzika"
-              />
-
-              <SwitchRow
-                label="Torta"
-                value={hasCake}
-                onValueChange={setHasCake}
-              />
-
               <SwitchRow
                 label="Dim, prskalice ili slično"
                 value={hasSmoke}
@@ -686,12 +719,68 @@ export default function NewReservationScreen() {
               />
 
               <SwitchRow
-                label="Dekoracija"
-                value={hasDecoration}
-                onValueChange={setHasDecoration}
+                label="Beli stolnjaci"
+                value={hasWhiteTablecloths}
+                onValueChange={setHasWhiteTablecloths}
+              />
+
+              <SwitchRow
+                label="Crni stolnjaci"
+                value={hasBlackTablecloths}
+                onValueChange={setHasBlackTablecloths}
               />
             </Section>
+            <Section title="Skica rasporeda stolova">
+              {tableLayoutImageUri ? (
+                <>
+                  <Pressable onPress={() => setIsImageOpen(true)}>
+                    <Image
+                      source={{ uri: tableLayoutImageUri }}
+                      style={styles.layoutImage}
+                      resizeMode="cover"
+                    />
+                  </Pressable>
 
+                  <View style={styles.imageButtonRow}>
+                    <Pressable
+                      style={styles.secondaryButton}
+                      onPress={() => setIsImageOpen(true)}
+                    >
+                      <Text style={styles.secondaryButtonText}>Otvori</Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={styles.removeImageButton}
+                      onPress={() => setTableLayoutImageUri(null)}
+                    >
+                      <Text style={styles.removeImageButtonText}>Ukloni</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.noImageText}>Skica još nije dodata.</Text>
+              )}
+
+              <Pressable
+                style={styles.imageActionButton}
+                onPress={() => handleImageSelection("camera")}
+                disabled={isSelectingImage}
+              >
+                <Text style={styles.imageActionButtonText}>
+                  Fotografiši skicu
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.imageActionButtonSecondary}
+                onPress={() => handleImageSelection("gallery")}
+                disabled={isSelectingImage}
+              >
+                <Text style={styles.imageActionButtonSecondaryText}>
+                  Izaberi iz galerije
+                </Text>
+              </Pressable>
+            </Section>
             <Section title="Napomena">
               <Field
                 label="Dodatni dogovor"
@@ -722,6 +811,30 @@ export default function NewReservationScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <Modal
+        visible={isImageOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsImageOpen(false)}
+      >
+        <View style={styles.imageModalOverlay}>
+          <Pressable
+            style={styles.imageModalClose}
+            onPress={() => setIsImageOpen(false)}
+          >
+            <Text style={styles.imageModalCloseText}>×</Text>
+          </Pressable>
+
+          {tableLayoutImageUri && (
+            <Image
+              source={{ uri: tableLayoutImageUri }}
+              style={styles.fullImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </>
   );
 }
@@ -1110,5 +1223,112 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
     color: "#ffffff",
+  },
+  imageModalOverlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.92)",
+  },
+
+  imageModalClose: {
+    position: "absolute",
+    top: 45,
+    right: 20,
+    zIndex: 2,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: 22,
+  },
+
+  imageModalCloseText: {
+    marginTop: -3,
+    fontSize: 32,
+    color: "#ffffff",
+  },
+
+  fullImage: {
+    width: "94%",
+    height: "84%",
+  },
+  layoutImage: {
+    width: "100%",
+    height: 230,
+    backgroundColor: "#f1edf2",
+    borderRadius: 12,
+  },
+
+  imageButtonRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 10,
+  },
+
+  secondaryButton: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#eee4f0",
+    borderRadius: 10,
+  },
+
+  secondaryButtonText: {
+    fontWeight: "700",
+    color: "#6d3b7c",
+  },
+
+  removeImageButton: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff1f1",
+    borderRadius: 10,
+  },
+
+  removeImageButtonText: {
+    fontWeight: "700",
+    color: "#b64040",
+  },
+
+  noImageText: {
+    marginBottom: 12,
+    fontSize: 14,
+    color: "#817584",
+  },
+
+  imageActionButton: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#6d3b7c",
+    borderRadius: 11,
+  },
+
+  imageActionButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+
+  imageActionButtonSecondary: {
+    minHeight: 48,
+    marginTop: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#6d3b7c",
+    borderRadius: 11,
+  },
+
+  imageActionButtonSecondaryText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#6d3b7c",
   },
 });

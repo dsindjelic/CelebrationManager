@@ -8,6 +8,7 @@
     "scheme": "emonaproslave",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "rs.bistrosistem.emonaproslave",
@@ -16,6 +17,7 @@
         "usesNonExemptEncryption": false
       }
     },
+
     "android": {
       "package": "rs.bistrosistem.emonaproslave",
       "versionCode": 1,
@@ -26,10 +28,12 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
+
     "web": {
       "output": "static",
       "favicon": "./assets/images/icon.png"
     },
+
     "plugins": [
       "expo-router",
       [
@@ -45,18 +49,29 @@
           }
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Aplikacija koristi galeriju za dodavanje skice rasporeda stolova.",
+          "cameraPermission": "Aplikacija koristi kameru za fotografisanje skice rasporeda stolova.",
+          "microphonePermission": false
+        }
+      ]
     ],
+
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
+
     "extra": {
       "router": {},
       "eas": {
         "projectId": "9c36e4b4-1840-47c5-a0b2-2715007ac4cf"
       }
     },
+
     "owner": "bistro-sistem"
   }
 }
