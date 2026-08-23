@@ -60,6 +60,7 @@ type ReservationRow = {
   currency: string;
   menu: string | null;
   has_smoke: number;
+  has_sparklers: number;
 
   has_white_tablecloths: number;
   has_black_tablecloths: number;
@@ -137,6 +138,7 @@ export default function NewReservationScreen() {
   const [menu, setMenu] = useState("");
 
   const [hasSmoke, setHasSmoke] = useState(false);
+  const [hasSparklers, setHasSparklers] = useState(false);
 
   const [notes, setNotes] = useState("");
 
@@ -179,6 +181,7 @@ export default function NewReservationScreen() {
       currency,
       menu,
       has_smoke,
+      has_sparklers,
       has_white_tablecloths,
       has_black_tablecloths,
       table_layout_image_uri,
@@ -217,6 +220,7 @@ export default function NewReservationScreen() {
         setCurrency(reservation.currency ?? "RSD");
         setMenu(reservation.menu ?? "");
         setHasSmoke(reservation.has_smoke === 1);
+        setHasSparklers(reservation.has_sparklers === 1);
 
         setHasWhiteTablecloths(reservation.has_white_tablecloths === 1);
 
@@ -401,6 +405,7 @@ export default function NewReservationScreen() {
       music = NULL,
       has_cake = 0,
       has_smoke = ?,
+      has_sparklers = ?,
       has_decoration = 0,
       has_white_tablecloths = ?,
       has_black_tablecloths = ?,
@@ -422,6 +427,7 @@ export default function NewReservationScreen() {
             currency,
             menu.trim(),
             hasSmoke ? 1 : 0,
+            hasSparklers ? 1 : 0,
             hasWhiteTablecloths ? 1 : 0,
             hasBlackTablecloths ? 1 : 0,
             tableLayoutImageUri,
@@ -452,6 +458,7 @@ export default function NewReservationScreen() {
       music,
       has_cake,
       has_smoke,
+      has_sparklers,
       has_decoration,
       has_white_tablecloths,
       has_black_tablecloths,
@@ -460,8 +467,8 @@ export default function NewReservationScreen() {
       created_at
     )
     VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?,
-      ?, NULL, 0, ?, 0, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?,
+      NULL, 0, ?, ?, 0, ?, ?, ?, ?, ?
     )
   `,
           [
@@ -475,9 +482,10 @@ export default function NewReservationScreen() {
             guests,
             fasting,
             price,
-
+            currency,
             menu.trim(),
             hasSmoke ? 1 : 0,
+            hasSparklers ? 1 : 0,
             hasWhiteTablecloths ? 1 : 0,
             hasBlackTablecloths ? 1 : 0,
             tableLayoutImageUri,
@@ -713,11 +721,16 @@ export default function NewReservationScreen() {
               />
 
               <SwitchRow
-                label="Dim, prskalice ili slično"
+                label="Dim"
                 value={hasSmoke}
                 onValueChange={setHasSmoke}
               />
 
+              <SwitchRow
+                label="Prskalice"
+                value={hasSparklers}
+                onValueChange={setHasSparklers}
+              />
               <SwitchRow
                 label="Beli stolnjaci"
                 value={hasWhiteTablecloths}

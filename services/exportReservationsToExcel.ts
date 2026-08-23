@@ -1,31 +1,26 @@
 import * as FileSystem from "expo-file-system/legacy";
+import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import * as XLSX from "xlsx";
 
-export type ExcelReservation = {
+export type ExportReservation = {
   id: number;
   celebration_date: string;
   start_time: string | null;
-
   celebrant_name: string;
   customer_name: string;
   phone_number: string;
-
   celebration_type: string;
   status: string;
-
   guest_count: number;
-  complimentary_guests: number;
   fasting_guests: number;
   price_per_person: number;
-
+  currency?: string | null;
   menu: string | null;
-  music: string | null;
-
-  has_cake: number;
   has_smoke: number;
-  has_decoration: number;
-
+  has_sparklers?: number;
+  has_white_tablecloths?: number;
+  has_black_tablecloths?: number;
   notes: string | null;
 };
 
@@ -43,213 +38,222 @@ const monthNames = [
   "Novembar",
   "Decembar",
 ];
+const weekdayNames = ["Pon", "Uto", "Sre", "Cet", "Pet", "Sub", "Ned"];
 
-const weekdayNames = [
-  "Ponedeljak",
-  "Utorak",
-  "Sreda",
-  "Četvrtak",
-  "Petak",
-  "Subota",
-  "Nedelja",
-];
-
-function calculateBasePrice(reservation: ExcelReservation) {
-  const chargedGuests = Math.max(
-    0,
-    reservation.guest_count - reservation.complimentary_guests,
-  );
-
-  return chargedGuests * reservation.price_per_person;
+function pad(value: number) {
+  return String(value).padStart(2, "0");
 }
 
-function serviceList(reservation: ExcelReservation) {
-  const services: string[] = [];
-
-  if (reservation.has_cake === 1) {
-    services.push("Torta");
-  }
-
-  if (reservation.has_smoke === 1) {
-    services.push("Dim / prskalice");
-  }
-
-  if (reservation.has_decoration === 1) {
-    services.push("Dekoracija");
-  }
-
-  return services.join(", ");
-}
-
-export async function exportReservationsToExcel(
-  reservations: ExcelReservation[],
+function getMonthlyReservations(
+  reservations: ExportReservation[],
   year: number,
   month: number,
 ) {
-  const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+  const prefix = `${year}-${pad(month)}`;
+  return reservations
+    .filter((reservation) => reservation.celebration_date.startsWith(prefix))
+    .sort((a, b) =>
+      `${a.celebration_date} ${a.start_time ?? "23:59"}`.localeCompare(
+        `${b.celebration_date} ${b.start_time ?? "23:59"}`,
+      ),
+    );
+}
 
-  const monthlyReservations = reservations
-    .filter((reservation) =>
-      reservation.celebration_date.startsWith(monthPrefix),
-    )
-    .sort((first, second) => {
-      const firstValue = `${first.celebration_date} ${first.start_time ?? "23:59"}`;
+function getCalendarWeeks(year: number, month: number) {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+  const weeks: (number | null)[][] = [];
+  let day = 1;
 
-      const secondValue = `${second.celebration_date} ${second.start_time ?? "23:59"}`;
+  while (day <= daysInMonth) {
+    const week: (number | null)[] = [];
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      if ((weeks.length === 0 && weekday < firstWeekday) || day > daysInMonth) {
+        week.push(null);
+      } else {
+        week.push(day++);
+      }
+    }
+    weeks.push(week);
+  }
+  return weeks;
+}
 
-      return firstValue.localeCompare(secondValue);
-    });
+function getComment(reservation: ExportReservation) {
+  const extras: string[] = [];
+  if (reservation.has_smoke === 1) extras.push("Dim");
+  if (reservation.has_sparklers === 1) extras.push("Prskalice");
+  if (reservation.has_white_tablecloths === 1) extras.push("Beli stolnjaci");
+  if (reservation.has_black_tablecloths === 1) extras.push("Crni stolnjaci");
 
-  const calendarRows: (string | number)[][] = [
+  return [
+    `Vreme: ${reservation.start_time ?? "nije uneto"}`,
+    `Zakazuje: ${reservation.customer_name}`,
+    `Telefon: ${reservation.phone_number}`,
+    `Vrsta: ${reservation.celebration_type}`,
+    `Status: ${reservation.status}`,
+    `Broj gostiju: ${reservation.guest_count}`,
+    `Gostiju koji poste: ${reservation.fasting_guests}`,
+    `Cena po osobi: ${reservation.price_per_person} ${reservation.currency === "EUR" ? "EUR" : "RSD"}`,
+    reservation.menu ? `Jelovnik: ${reservation.menu}` : "",
+    extras.length ? `Dodatno: ${extras.join(", ")}` : "",
+    reservation.notes ? `Napomena: ${reservation.notes}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function checkSharing() {
+  if (!(await Sharing.isAvailableAsync())) {
+    throw new Error("Deljenje fajlova nije dostupno na ovom uređaju.");
+  }
+}
+
+export async function exportReservationsToExcel(
+  reservations: ExportReservation[],
+  year: number,
+  month: number,
+) {
+  const monthly = getMonthlyReservations(reservations, year, month);
+  const weeks = getCalendarWeeks(year, month);
+  const rows: (string | number)[][] = [
     [`Kalendar proslava – ${monthNames[month - 1]} ${year}`],
     weekdayNames,
   ];
 
-  const firstDay = new Date(year, month - 1, 1);
-  const daysInMonth = new Date(year, month, 0).getDate();
-
-  // JavaScript: nedelja = 0. Nama je ponedeljak prva kolona.
-  const firstWeekday = (firstDay.getDay() + 6) % 7;
-
-  let day = 1;
-
-  for (let week = 0; week < 6; week += 1) {
-    const weekRow: string[] = [];
-
-    for (let weekday = 0; weekday < 7; weekday += 1) {
-      if ((week === 0 && weekday < firstWeekday) || day > daysInMonth) {
-        weekRow.push("");
-        continue;
-      }
-
-      const dateString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-      const dailyReservations = monthlyReservations.filter(
-        (reservation) => reservation.celebration_date === dateString,
-      );
-
-      const reservationText = dailyReservations
-        .map((reservation) => {
-          const time = reservation.start_time ?? "Vreme nije uneto";
-
-          return [
-            `${time} – ${reservation.celebrant_name}`,
-            `${reservation.celebration_type} · ${reservation.guest_count} gostiju`,
-            reservation.status,
-          ].join("\n");
-        })
-        .join("\n\n");
-
-      weekRow.push(
-        reservationText ? `${day}\n\n${reservationText}` : String(day),
-      );
-
-      day += 1;
-    }
-
-    calendarRows.push(weekRow);
-
-    if (day > daysInMonth) {
-      break;
-    }
+  for (const week of weeks) {
+    rows.push(
+      week.map((day) => {
+        if (day === null) return "";
+        const date = `${year}-${pad(month)}-${pad(day)}`;
+        const names = monthly
+          .filter((reservation) => reservation.celebration_date === date)
+          .map((reservation) => reservation.customer_name.trim())
+          .filter(Boolean);
+        return names.length ? `${day}\n${names.join("\n")}` : day;
+      }),
+    );
   }
 
-  const calendarSheet = XLSX.utils.aoa_to_sheet(calendarRows);
-
-  calendarSheet["!merges"] = [
-    {
-      s: { r: 0, c: 0 },
-      e: { r: 0, c: 6 },
-    },
-  ];
-
-  calendarSheet["!cols"] = weekdayNames.map(() => ({
-    wch: 24,
-  }));
-
-  calendarSheet["!rows"] = [
-    { hpt: 28 },
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  sheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
+  sheet["!cols"] = weekdayNames.map(() => ({ wch: 22 }));
+  sheet["!rows"] = [
+    { hpt: 30 },
     { hpt: 24 },
-    ...calendarRows.slice(2).map(() => ({ hpt: 110 })),
+    ...weeks.map(() => ({ hpt: 82 })),
   ];
 
-  const detailRows = monthlyReservations.map((reservation) => {
-    const chargedGuests = Math.max(
-      0,
-      reservation.guest_count - reservation.complimentary_guests,
-    );
-
-    return {
-      Datum: reservation.celebration_date,
-      Početak: reservation.start_time ?? "",
-      Slavljenik: reservation.celebrant_name,
-      "Vrsta proslave": reservation.celebration_type,
-      Status: reservation.status,
-      "Ko zakazuje": reservation.customer_name,
-      Telefon: reservation.phone_number,
-      "Broj gostiju": reservation.guest_count,
-      "Gratis mesta": reservation.complimentary_guests,
-      "Gostiju za naplatu": chargedGuests,
-      "Gostiju koji poste": reservation.fasting_guests,
-      "Cena po osobi": reservation.price_per_person,
-      "Osnovna cena": calculateBasePrice(reservation),
-      Jelovnik: reservation.menu ?? "",
-      Muzika: reservation.music ?? "",
-      "Dodatne usluge": serviceList(reservation),
-      Napomena: reservation.notes ?? "",
-    };
+  weeks.forEach((week, weekIndex) => {
+    week.forEach((day, weekdayIndex) => {
+      if (day === null) return;
+      const date = `${year}-${pad(month)}-${pad(day)}`;
+      const daily = monthly.filter(
+        (reservation) => reservation.celebration_date === date,
+      );
+      if (!daily.length) return;
+      const address = XLSX.utils.encode_cell({
+        r: weekIndex + 2,
+        c: weekdayIndex,
+      });
+      const cell = sheet[address];
+      if (cell) {
+        cell.c = [
+          {
+            a: "Emona Proslave",
+            t: daily.map(getComment).join("\n\n---\n\n"),
+          },
+        ];
+        cell.c.hidden = true;
+      }
+    });
   });
-
-  const detailsSheet = XLSX.utils.json_to_sheet(detailRows);
-
-  detailsSheet["!cols"] = [
-    { wch: 12 },
-    { wch: 10 },
-    { wch: 24 },
-    { wch: 20 },
-    { wch: 14 },
-    { wch: 24 },
-    { wch: 18 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 18 },
-    { wch: 20 },
-    { wch: 16 },
-    { wch: 18 },
-    { wch: 40 },
-    { wch: 28 },
-    { wch: 28 },
-    { wch: 45 },
-  ];
 
   const workbook = XLSX.utils.book_new();
-
-  XLSX.utils.book_append_sheet(workbook, calendarSheet, "Kalendar");
-  XLSX.utils.book_append_sheet(workbook, detailsSheet, "Proslave");
-
-  const workbookBase64 = XLSX.write(workbook, {
-    type: "base64",
-    bookType: "xlsx",
-  });
-
-  const fileName = `Emona-proslave-${year}-${String(month).padStart(2, "0")}.xlsx`;
-
-  const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-
-  await FileSystem.writeAsStringAsync(fileUri, workbookBase64, {
+  XLSX.utils.book_append_sheet(workbook, sheet, "Kalendar");
+  const base64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
+  const fileUri = `${FileSystem.cacheDirectory}Emona-proslave-${year}-${pad(month)}.xlsx`;
+  await FileSystem.writeAsStringAsync(fileUri, base64, {
     encoding: FileSystem.EncodingType.Base64,
   });
-
-  const sharingAvailable = await Sharing.isAvailableAsync();
-
-  if (!sharingAvailable) {
-    throw new Error("Deljenje fajlova nije dostupno na ovom uređaju.");
-  }
-
+  await checkSharing();
   await Sharing.shareAsync(fileUri, {
     mimeType:
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     dialogTitle: `Izvezi ${monthNames[month - 1]} ${year}`,
     UTI: "org.openxmlformats.spreadsheetml.sheet",
+  });
+}
+
+function escapeHtml(value: string | number | null | undefined) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+export async function exportReservationsToPdf(
+  reservations: ExportReservation[],
+  year: number,
+  month: number,
+) {
+  const monthly = getMonthlyReservations(reservations, year, month);
+  const weeks = getCalendarWeeks(year, month);
+  const bodyRows = weeks
+    .map(
+      (week) =>
+        `<tr>${week
+          .map((day) => {
+            if (day === null) return "<td></td>";
+            const date = `${year}-${pad(month)}-${pad(day)}`;
+            const items = monthly
+              .filter((reservation) => reservation.celebration_date === date)
+              .map(
+                (reservation) => `
+        <div class="reservation">
+          <strong>${escapeHtml(reservation.customer_name)}</strong>
+          ${reservation.start_time ? `<span>${escapeHtml(reservation.start_time)}</span>` : ""}
+          <small>${escapeHtml(reservation.status)}</small>
+        </div>`,
+              )
+              .join("");
+            return `<td><div class="day">${day}</div>${items}</td>`;
+          })
+          .join("")}</tr>`,
+    )
+    .join("");
+
+  const html = `<!DOCTYPE html><html lang="sr"><head><meta charset="utf-8" />
+    <style>
+      @page { size: A4 landscape; margin: 12mm; }
+      * { box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #35213b; margin: 0; }
+      h1 { text-align: center; color: #6d3b7c; font-size: 25px; margin: 0 0 12px; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th { background: #6d3b7c; color: white; padding: 7px; font-size: 13px; }
+      td { height: 92px; vertical-align: top; border: 1px solid #cdbfd1; padding: 6px; }
+      .day { font-size: 15px; font-weight: 700; margin-bottom: 5px; }
+      .reservation { margin-top: 4px; padding: 4px; border-radius: 5px; background: #f2e9f4; font-size: 11px; }
+      .reservation strong, .reservation span, .reservation small { display: block; }
+      .reservation small { color: #6d3b7c; }
+    </style></head><body>
+    <h1>Kalendar proslava – ${monthNames[month - 1]} ${year}</h1>
+    <table><thead><tr>${weekdayNames.map((name) => `<th>${name}</th>`).join("")}</tr></thead>
+    <tbody>${bodyRows}</tbody></table></body></html>`;
+
+  const result = await Print.printToFileAsync({ html });
+  const fileUri = `${FileSystem.cacheDirectory}Emona-proslave-${year}-${pad(month)}.pdf`;
+  const oldFile = await FileSystem.getInfoAsync(fileUri);
+  if (oldFile.exists) {
+    await FileSystem.deleteAsync(fileUri, { idempotent: true });
+  }
+  await FileSystem.copyAsync({ from: result.uri, to: fileUri });
+  await checkSharing();
+  await Sharing.shareAsync(fileUri, {
+    mimeType: "application/pdf",
+    dialogTitle: `Izvezi ${monthNames[month - 1]} ${year} u PDF`,
+    UTI: "com.adobe.pdf",
   });
 }

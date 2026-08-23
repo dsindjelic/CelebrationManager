@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
 import { useSQLiteContext } from "expo-sqlite";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -11,7 +12,11 @@ import {
 } from "react-native";
 import { Calendar, DateData, LocaleConfig } from "react-native-calendars";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { exportReservationsToExcel } from "../services/exportReservationsToExcel";
+import ViewShot from "react-native-view-shot";
+import {
+  exportReservationsToExcel,
+  exportReservationsToPdf,
+} from "../services/exportReservationsToExcel";
 
 import ReservationModal, {
   ReservationModalData,
@@ -110,6 +115,7 @@ function calculateBasePrice(reservation: Reservation) {
 export default function HomeScreen() {
   const router = useRouter();
   const database = useSQLiteContext();
+  const calendarShotRef = useRef<ViewShot>(null);
 
   const [selectedDate, setSelectedDate] = useState(getLocalDateString());
 
@@ -135,11 +141,16 @@ export default function HomeScreen() {
       complimentary_guests,
       fasting_guests,
       price_per_person,
+      currency,
       menu,
       music,
       has_cake,
       has_smoke,
+      has_sparklers,
       has_decoration,
+      has_white_tablecloths,
+      has_black_tablecloths,
+      table_layout_image_uri,
       notes
     FROM reservations
     ORDER BY celebration_date, id
@@ -171,7 +182,9 @@ export default function HomeScreen() {
     getLocalDateString().slice(0, 7),
   );
 
-  const [isExporting, setIsExporting] = useState(false);
+  const [exportingType, setExportingType] = useState<
+    "excel" | "pdf" | "png" | null
+  >(null);
   const dateSummary = useMemo(() => {
     const summary: Record<
       string,
@@ -221,7 +234,7 @@ export default function HomeScreen() {
     const [year, month] = visibleMonth.split("-").map(Number);
 
     try {
-      setIsExporting(true);
+      setExportingType("excel");
 
       await exportReservationsToExcel(reservations, year, month);
     } catch (error) {
@@ -229,7 +242,52 @@ export default function HomeScreen() {
 
       Alert.alert("Izvoz nije uspeo", "Excel fajl nije napravljen.");
     } finally {
-      setIsExporting(false);
+      setExportingType(null);
+    }
+  }
+
+  async function handleExportPdf() {
+    const [year, month] = visibleMonth.split("-").map(Number);
+
+    try {
+      setExportingType("pdf");
+      await exportReservationsToPdf(reservations, year, month);
+    } catch (error) {
+      console.error("Greška pri izvozu u PDF:", error);
+      Alert.alert("Izvoz nije uspeo", "PDF fajl nije napravljen.");
+    } finally {
+      setExportingType(null);
+    }
+  }
+
+  async function handleExportPng() {
+    try {
+      setExportingType("png");
+
+      if (!calendarShotRef.current) {
+        throw new Error("Kalendar nije spreman za snimanje.");
+      }
+
+      const fileUri = await calendarShotRef.current.capture?.();
+
+      if (!fileUri) {
+        throw new Error("PNG fajl nije napravljen.");
+      }
+
+      if (!(await Sharing.isAvailableAsync())) {
+        throw new Error("Deljenje fajlova nije dostupno na ovom uređaju.");
+      }
+
+      await Sharing.shareAsync(fileUri, {
+        mimeType: "image/png",
+        dialogTitle: `Izvezi kalendar ${visibleMonth} kao PNG`,
+        UTI: "public.png",
+      });
+    } catch (error) {
+      console.error("Greška pri izvozu u PNG:", error);
+      Alert.alert("Izvoz nije uspeo", "PNG slika nije napravljena.");
+    } finally {
+      setExportingType(null);
     }
   }
   function handleNewReservation() {
@@ -327,7 +385,15 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        <View style={styles.calendarCard}>
+        <ViewShot
+          ref={calendarShotRef}
+          style={styles.calendarCard}
+          options={{
+            format: "png",
+            quality: 1,
+            result: "tmpfile",
+          }}
+        >
           <Calendar
             current={selectedDate}
             firstDay={1}
@@ -421,7 +487,7 @@ export default function HomeScreen() {
               textDayHeaderFontWeight: "600",
             }}
           />
-        </View>
+        </ViewShot>
 
         <View style={styles.legend}>
           <LegendItem color={statusColors.Upit} label="Upit" />
@@ -528,15 +594,47 @@ export default function HomeScreen() {
           style={({ pressed }) => [
             styles.exportButton,
             pressed && styles.exportButtonPressed,
-            isExporting && styles.disabledButton,
+            exportingType !== null && styles.disabledButton,
           ]}
           onPress={handleExportExcel}
-          disabled={isExporting}
+          disabled={exportingType !== null}
         >
           <Text style={styles.exportButtonText}>
-            {isExporting
+            {exportingType === "excel"
               ? "Pravljenje Excel fajla..."
               : "Izvezi prikazani mesec u Excel"}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.exportButton,
+            pressed && styles.exportButtonPressed,
+            exportingType !== null && styles.disabledButton,
+          ]}
+          onPress={handleExportPdf}
+          disabled={exportingType !== null}
+        >
+          <Text style={styles.exportButtonText}>
+            {exportingType === "pdf"
+              ? "Pravljenje PDF fajla..."
+              : "Izvezi prikazani mesec u PDF"}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.exportButton,
+            pressed && styles.exportButtonPressed,
+            exportingType !== null && styles.disabledButton,
+          ]}
+          onPress={handleExportPng}
+          disabled={exportingType !== null}
+        >
+          <Text style={styles.exportButtonText}>
+            {exportingType === "png"
+              ? "Pravljenje PNG slike..."
+              : "Izvezi prikazani kalendar kao PNG"}
           </Text>
         </Pressable>
       </ScrollView>

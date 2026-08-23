@@ -33,6 +33,7 @@ export async function initializeDatabase(database: SQLiteDatabase) {
 
       has_cake INTEGER NOT NULL DEFAULT 0,
       has_smoke INTEGER NOT NULL DEFAULT 0,
+      has_sparklers INTEGER NOT NULL DEFAULT 0,
       has_decoration INTEGER NOT NULL DEFAULT 0,
 
       has_white_tablecloths INTEGER NOT NULL DEFAULT 0,
@@ -103,6 +104,18 @@ export async function initializeDatabase(database: SQLiteDatabase) {
   `);
 
     console.log("Dodata je kolona currency.");
+  }
+  const hasSparklersColumn = columns.some(
+    (column) => column.name === "has_sparklers",
+  );
+
+  if (!hasSparklersColumn) {
+    await database.execAsync(`
+    ALTER TABLE reservations
+    ADD COLUMN has_sparklers INTEGER NOT NULL DEFAULT 0;
+  `);
+
+    console.log("Dodata je kolona has_sparklers.");
   }
   console.log("SQLite baza je inicijalizovana.");
 }
