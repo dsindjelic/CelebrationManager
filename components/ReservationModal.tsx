@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import {
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -23,15 +25,21 @@ export type ReservationModalData = {
   complimentary_guests: number;
   fasting_guests: number;
   price_per_person: number;
+  currency?: string | null;
 
-  menu: string;
-  music: string;
+  menu: string | null;
+  music: string | null;
 
   has_cake: number;
   has_smoke: number;
+  has_sparklers?: number;
   has_decoration: number;
 
-  notes: string;
+  has_white_tablecloths?: number;
+  has_black_tablecloths?: number;
+  table_layout_image_uri?: string | null;
+
+  notes: string | null;
 };
 
 type ReservationModalProps = {
@@ -88,21 +96,24 @@ export default function ReservationModal({
   onConfirm,
   onDelete,
 }: ReservationModalProps) {
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    setShowAll(false);
+  }, [visible, reservation?.id]);
+
   if (!reservation) {
     return null;
   }
 
-  const chargedGuests = Math.max(
-    0,
-    reservation.guest_count - reservation.complimentary_guests,
-  );
-
-  const basePrice = chargedGuests * reservation.price_per_person;
+  const basePrice = reservation.guest_count * reservation.price_per_person;
+  const currency = reservation.currency === "EUR" ? "EUR" : "RSD";
 
   const hasAdditionalServices =
-    reservation.has_cake === 1 ||
     reservation.has_smoke === 1 ||
-    reservation.has_decoration === 1;
+    reservation.has_sparklers === 1 ||
+    reservation.has_white_tablecloths === 1 ||
+    reservation.has_black_tablecloths === 1;
 
   return (
     <Modal
@@ -165,28 +176,18 @@ export default function ReservationModal({
               <DetailRow label="Telefon" value={reservation.phone_number} />
 
               <DetailRow
+                label="Početak"
+                value={reservation.start_time ?? "Nije uneto"}
+              />
+
+              <DetailRow
                 label="Broj gostiju"
                 value={String(reservation.guest_count)}
               />
 
               <DetailRow
-                label="Gratis mesta"
-                value={String(reservation.complimentary_guests)}
-              />
-
-              <DetailRow
-                label="Gostiju za naplatu"
-                value={String(chargedGuests)}
-              />
-
-              <DetailRow
-                label="Gostiju koji poste"
-                value={String(reservation.fasting_guests)}
-              />
-
-              <DetailRow
                 label="Cena po osobi"
-                value={`${formatPrice(reservation.price_per_person)} RSD`}
+                value={`${formatPrice(reservation.price_per_person)} ${currency}`}
               />
             </View>
 
@@ -196,59 +197,95 @@ export default function ReservationModal({
               <Text style={styles.totalLabel}>Osnovna vrednost proslave</Text>
 
               <Text style={styles.totalValue}>
-                {formatPrice(basePrice)} RSD
+                {formatPrice(basePrice)} {currency}
               </Text>
 
               <Text style={styles.totalExplanation}>
-                {chargedGuests} × {formatPrice(reservation.price_per_person)}{" "}
-                RSD
+                {reservation.guest_count} ×{" "}
+                {formatPrice(reservation.price_per_person)} {currency}
               </Text>
             </View>
 
-            {/* ORGANIZACIJA */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.showAllButton,
+                pressed && styles.showAllButtonPressed,
+              ]}
+              onPress={() => setShowAll((current) => !current)}
+            >
+              <Text style={styles.showAllButtonText}>
+                {showAll ? "Prikaži manje ▲" : "Prikaži sve ▼"}
+              </Text>
+            </Pressable>
 
-            <SectionTitle title="Organizacija proslave" />
+            {showAll && (
+              <View style={styles.expandedContent}>
+                <SectionTitle title="Detalji proslave" />
 
-            {!!reservation.menu?.trim() && (
-              <InfoCard title="Jelovnik" value={reservation.menu} />
-            )}
+                <View style={styles.details}>
+                  <DetailRow
+                    label="Vrsta proslave"
+                    value={reservation.celebration_type}
+                  />
 
-            {!!reservation.music?.trim() && (
-              <InfoCard title="Muzika" value={reservation.music} />
-            )}
+                  <DetailRow
+                    label="Gostiju koji poste"
+                    value={String(reservation.fasting_guests)}
+                  />
+                </View>
 
-            {/* DODATNE USLUGE */}
-
-            <Text style={styles.additionalTitle}>Dodatne usluge</Text>
-
-            {hasAdditionalServices ? (
-              <View style={styles.serviceContainer}>
-                {reservation.has_cake === 1 && <ServiceBadge label="Torta" />}
-
-                {reservation.has_smoke === 1 && (
-                  <ServiceBadge label="Dim / prskalice" />
+                {!!reservation.menu?.trim() && (
+                  <InfoCard title="Jelovnik" value={reservation.menu} />
                 )}
 
-                {reservation.has_decoration === 1 && (
-                  <ServiceBadge label="Dekoracija" />
+                <Text style={styles.additionalTitle}>
+                  Organizacija proslave
+                </Text>
+
+                {hasAdditionalServices ? (
+                  <View style={styles.serviceContainer}>
+                    {reservation.has_smoke === 1 && (
+                      <ServiceBadge label="Dim" />
+                    )}
+
+                    {reservation.has_sparklers === 1 && (
+                      <ServiceBadge label="Prskalice" />
+                    )}
+
+                    {reservation.has_white_tablecloths === 1 && (
+                      <ServiceBadge label="Beli stolnjaci" />
+                    )}
+
+                    {reservation.has_black_tablecloths === 1 && (
+                      <ServiceBadge label="Crni stolnjaci" />
+                    )}
+                  </View>
+                ) : (
+                  <Text style={styles.noServicesText}>
+                    Nema izabranih dodatnih opcija.
+                  </Text>
+                )}
+
+                {!!reservation.table_layout_image_uri && (
+                  <>
+                    <SectionTitle title="Skica stolova" />
+                    <Image
+                      source={{ uri: reservation.table_layout_image_uri }}
+                      style={styles.tableLayoutImage}
+                      resizeMode="contain"
+                    />
+                  </>
+                )}
+
+                {!!reservation.notes?.trim() && (
+                  <>
+                    <SectionTitle title="Napomena" />
+                    <View style={styles.notesCard}>
+                      <Text style={styles.notesText}>{reservation.notes}</Text>
+                    </View>
+                  </>
                 )}
               </View>
-            ) : (
-              <Text style={styles.noServicesText}>
-                Nema dogovorenih dodatnih usluga.
-              </Text>
-            )}
-
-            {/* NAPOMENA */}
-
-            {!!reservation.notes?.trim() && (
-              <>
-                <SectionTitle title="Napomena" />
-
-                <View style={styles.notesCard}>
-                  <Text style={styles.notesText}>{reservation.notes}</Text>
-                </View>
-              </>
             )}
 
             {/* POTVRĐENO */}
@@ -487,6 +524,31 @@ const styles = StyleSheet.create({
     color: "#87758b",
   },
 
+  showAllButton: {
+    minHeight: 46,
+    marginTop: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1.5,
+    borderColor: "#7e3788",
+    borderRadius: 12,
+  },
+
+  showAllButtonPressed: {
+    backgroundColor: "#f3eaf5",
+  },
+
+  showAllButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#7e3788",
+  },
+
+  expandedContent: {
+    paddingBottom: 2,
+  },
+
   infoCard: {
     marginTop: 8,
     padding: 14,
@@ -538,6 +600,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     fontSize: 14,
     color: "#8b808e",
+  },
+
+  tableLayoutImage: {
+    width: "100%",
+    height: 230,
+    backgroundColor: "#f8f5f9",
+    borderWidth: 1,
+    borderColor: "#e5dce7",
+    borderRadius: 12,
   },
 
   notesCard: {
